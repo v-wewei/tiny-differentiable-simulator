@@ -3,6 +3,9 @@
 #include "tiny_min_max.h"
 #include <float.h>
 
+#include "math/tiny/tiny_float_utils.h"
+#include "tiny_obj_loader.h"
+
 class TinyMeshUtils {
 public:
 	static void extract_shape(

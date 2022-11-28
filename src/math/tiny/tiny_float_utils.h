@@ -47,6 +47,14 @@ struct FloatUtils {
   static float asin(float v) { return ::asinf(v); }
   static float copysign(float x, float y) { return ::copysignf(x, y); }
   static float abs(float v) { return ::fabsf(v); }
+  static double tanh(float v) { return ::tanh(v); }
+  static double log(float v) { return ::log(v); }
+  static float exp(float v) { return ::exp(v); }
+  static float pow(float a, float  b) { return ::pow(a, b); }
+  template <class T>
+  static float getDouble(T v) {
+    return (float)v;
+  }
 
   template <class T>
   static T sqrt1(T v) {
@@ -73,6 +81,10 @@ struct FloatUtils {
   static float scalar_from_string(const std::string& txt) {
     float result = atof(txt.c_str());
     return result;
+  }
+
+  static float scalar_from_double(double d) {
+    return static_cast<float>(d);
   }
 
   static void FullAssert(bool a) {

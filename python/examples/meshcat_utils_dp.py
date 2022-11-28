@@ -54,6 +54,14 @@ def convert_link_visuals(link, link_index, material, vis, uid, b2vis, path_prefi
         b2vis[uid] = b2v
         uid += 1
 
+    if v.geometry.geom_type == dp.CAPSULE_TYPE:
+      print("created ellipsoid for viz capsule!")
+      l = v.geometry.capsule.length
+      r = v.geometry.capsule.radius
+      vis[vis_name].set_object(g.Ellipsoid([r, r, (l+2*r)/2.0]), material)
+      b2vis[uid] = b2v
+      uid += 1
+
     if v.geometry.geom_type == dp.MESH_TYPE:
       print("mesh filename=", path_prefix+v.geometry.mesh.file_name)
       print("geom_meshscale=", v.geometry.mesh.scale)
@@ -109,11 +117,11 @@ def sync_visual_transforms(mb, b2vis, vis):
     link_world_trans = mb.get_world_transform(v.link_index)
 
     vpos = v.origin_xyz
-    vorn = dp.TinyQuaternion(0.0, 0.0, 0.0, 1.0)
+    vorn = dp.Quaternion(0.0, 0.0, 0.0, 1.0)
     vorn.set_euler_rpy(v.origin_rpy)
     trv = dp.TinySpatialTransform()
     trv.translation = vpos
-    trv.rotation = dp.TinyMatrix3x3(vorn)
+    trv.rotation = dp.Matrix3(vorn)
     #print("link_world_trans.x=",link_world_trans.translation.x)
     #print("link_world_trans.y=",link_world_trans.translation.y)
     #print("link_world_trans.z=",link_world_trans.translation.z)

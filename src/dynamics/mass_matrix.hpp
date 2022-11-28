@@ -26,7 +26,7 @@ void mass_matrix(MultiBody<Algebra> &mb, const typename Algebra::VectorX &q,
   typedef tds::RigidBodyInertia<Algebra> RigidBodyInertia;
   typedef tds::ArticulatedBodyInertia<Algebra> ArticulatedBodyInertia;
 
-  assert(Algebra::size(q) - mb.spherical_joints() == mb.dof());
+  assert(Algebra::size(q) == mb.dof());
   assert(M != nullptr);
   int n = static_cast<int>(mb.num_links());
   // printf("n is %i\n", n);
@@ -61,7 +61,7 @@ void mass_matrix(MultiBody<Algebra> &mb, const typename Algebra::VectorX &q,
 
       int j = i;
       while (mb[j].parent_index != -1) {
-        Fi = mb[j].X_parent.apply(Fi);
+        Fi = mb[j].X_parent.apply(Fi, true);
         j = mb[j].parent_index;
         if (mb[j].joint_type == JOINT_FIXED) continue;
         int qd_j = mb[j].qd_index;
@@ -79,9 +79,9 @@ void mass_matrix(MultiBody<Algebra> &mb, const typename Algebra::VectorX &q,
         }
       }
       if (mb.is_floating()) {
-        Fi = mb[j].X_parent.apply(Fi);
+        Fi = mb[j].X_parent.apply(Fi, true);
         Algebra::assign_block(*M, Fi, 0, qd_i, 6, 3);
-        Algebra::assign_block(*M, Algebra::transpose(Fi), qd_i, 0, 6, 3);
+        Algebra::assign_block(*M, Algebra::transpose(Fi), 0, qd_i, 6, 3);
       }
     }else {
       ForceVector Fi = Ic * link.S;  // Ic.mul_inv(link.S);
@@ -98,8 +98,8 @@ void mass_matrix(MultiBody<Algebra> &mb, const typename Algebra::VectorX &q,
         if (mb[j].joint_type == JOINT_SPHERICAL) {
           Vector3 Hij = Algebra::dot(mb[j].S_3d, Fi);
           for (int ii = 0; ii < 3; ii++){
-            (*M)(qd_i + ii, qd_j) = Hij[ii];
-            (*M)(qd_j, qd_i + ii) = Hij[ii];
+            (*M)(qd_i, qd_j + ii) = Hij[ii];
+            (*M)(qd_j + ii, qd_i) = Hij[ii];
           }
         }else{
           (*M)(qd_i, qd_j) = Algebra::dot(Fi, mb[j].S);

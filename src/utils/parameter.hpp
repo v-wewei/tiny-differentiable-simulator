@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <limits>
 #include <string>
+#include <cmath>
 
 namespace tds {
 struct EstimationParameter {
@@ -27,6 +28,10 @@ struct EstimationParameter {
     return minimum + (double(std::rand()) / RAND_MAX * (maximum - minimum));
   };
 
+  bool has_limits() const {
+    return !std::isinf(minimum) && !std::isinf(maximum);
+  }
+
   /**
    * Compute loss contribution of this parameter given its actual value used in
    * the loss function.
@@ -40,9 +45,9 @@ struct EstimationParameter {
                Algebra::from_double(l2_regularization);
   }
 
-  friend std::ostream& operator<<(std::ostream& stream, const EstimationParameter& p) {
-    stream << p.name << " = " << p.value;
-    return stream;
-  }
+  //friend std::ostream& operator<<(std::ostream& stream, const EstimationParameter& p) {
+  //  stream << p.name << " = " << p.value;
+  //  return stream;
+  //}
 };
 }  // namespace tds

@@ -17,7 +17,7 @@
 
 
 SET(PYTHON_VERSION_DIFF_PHYSICS "" CACHE STRING "Python version pytinydiffsim will use.")
-SET(Python_ADDITIONAL_VERSIONS 3 3.6 3.5 3.4 3.3 3.2 3.1 3.0 2.7 2.7.12 2.7.10 2.7.3 )
+SET(Python_ADDITIONAL_VERSIONS 3 3.9 3.8 3.7 3.6 3.5 3.4 3.3 3.2 3.1 3.0 2.7 2.7.12 2.7.10 2.7.3 )
 SET_PROPERTY(CACHE PYTHON_VERSION_DIFF_PHYSICS PROPERTY STRINGS ${Python_ADDITIONAL_VERSIONS})
 SET(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/build3/cmake ${CMAKE_MODULE_PATH})
 OPTION(EXACT_PYTHON_VERSION "Require Python and match PYTHON_VERSION_DIFF_PHYSICS exactly, e.g. 2.7.12" OFF)
@@ -70,11 +70,15 @@ ADD_DEFINITIONS(-DSTATIC_LINK_SPD_PLUGIN)
 
 
 
+
 ADD_LIBRARY(pytinydiffsim SHARED pytinydiffsim.cc ${TDS_HDRS})
+TARGET_COMPILE_DEFINITIONS(pytinydiffsim PUBLIC -DENABLE_TEST_ENVS -DNOMINMAX )
 
 
 ADD_LIBRARY(pytinydiffsim_dual SHARED pytinydiffsim_dual.cc ${TDS_HDRS})
-
+IF(USE_CPPAD)
+ADD_LIBRARY(pytinydiffsim_ad SHARED pytinydiffsim_ad.cc ${TDS_HDRS})
+ENDIF(USE_CPPAD)
 
 
 #SET_TARGET_PROPERTIES(pytinydiffsim PROPERTIES PREFIX "")
@@ -85,8 +89,14 @@ ADD_LIBRARY(pytinydiffsim_dual SHARED pytinydiffsim_dual.cc ${TDS_HDRS})
 #SET_TARGET_PROPERTIES(pytinydiffsim PROPERTIES DEBUG_POSTFIX "_d")
 
 
-TARGET_LINK_LIBRARIES(pytinydiffsim tinyxml2 Eigen3::Eigen)
-TARGET_LINK_LIBRARIES(pytinydiffsim_dual tinyxml2 Eigen3::Eigen)
+TARGET_LINK_LIBRARIES(pytinydiffsim tinyxml2 Eigen3::Eigen )
+TARGET_LINK_LIBRARIES(pytinydiffsim_dual tinyxml2 Eigen3::Eigen )
+IF(USE_CPPAD)
+TARGET_LINK_LIBRARIES(pytinydiffsim_ad tinyxml2 Eigen3::Eigen CppADCodeGen)
+IF (WIN32)
+	TARGET_COMPILE_DEFINITIONS(pytinydiffsim_ad PUBLIC -D_USE_MATH_DEFINES)
+ENDIF(WIN32)
+ENDIF(USE_CPPAD)
 
 IF (WIN32)
   TARGET_COMPILE_OPTIONS(pytinydiffsim PUBLIC -bigobj)
@@ -113,6 +123,21 @@ ELSEIF (APPLE)
 ENDIF ()
 
 
+IF(USE_CPPAD)
+    IF (WIN32)
+      TARGET_COMPILE_OPTIONS(pytinydiffsim_ad PUBLIC -bigobj)
+
+      GET_FILENAME_COMPONENT(PYTHON_LIBRARY_DIR ${PYTHON_LIBRARIES} DIRECTORY)# CACHE)
+
+      target_link_directories (pytinydiffsim_ad PUBLIC "${PYTHON_LIBRARY_DIR}")
+      TARGET_LINK_LIBRARIES(pytinydiffsim_ad ${PYTHON_LIBRARIES})
+    ELSEIF (APPLE)
+          SET_TARGET_PROPERTIES(pytinydiffsim_ad PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
+    ENDIF ()
+ENDIF(USE_CPPAD)
+
+
+
 INCLUDE_DIRECTORIES( 
     ${DIFF_PHYSICS_SOURCE_DIR}
 		${DIFF_PHYSICS_SOURCE_DIR}/python
@@ -128,7 +153,7 @@ SET(pytinyopengl3_SRCS
 )
 
 ADD_LIBRARY(pytinyopengl3 SHARED ${pytinyopengl3_SRCS} ${TDS_HDRS})
-TARGET_LINK_LIBRARIES(pytinyopengl3 opengl_window)
+TARGET_LINK_LIBRARIES(pytinyopengl3 tinyxml2 opengl_window)
 target_include_directories(pytinyopengl3 PRIVATE ../src)
 
 

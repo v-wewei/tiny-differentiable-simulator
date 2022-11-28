@@ -13,7 +13,8 @@ void forward_dynamics(MultiBody<Algebra> &mb,
                       const typename Algebra::VectorX &qd,
                       const typename Algebra::VectorX &tau,
                       const typename Algebra::Vector3 &gravity,
-                      typename Algebra::VectorX &qdd) {
+                      typename Algebra::VectorX &qdd,
+                      bool rbdl_convention = false) {
   using Scalar = typename Algebra::Scalar;
   using Vector3 = typename Algebra::Vector3;
   using VectorX = typename Algebra::VectorX;
@@ -27,7 +28,7 @@ void forward_dynamics(MultiBody<Algebra> &mb,
   typedef tds::RigidBodyInertia<Algebra> RigidBodyInertia;
   typedef tds::ArticulatedBodyInertia<Algebra> ArticulatedBodyInertia;
 
-  assert(Algebra::size(q) - mb.spherical_joints() == mb.dof());
+  assert(Algebra::size(q) == mb.dof());
   assert(Algebra::size(qd) == mb.dof_qd());
   assert(Algebra::size(qdd) == mb.dof_qd());
   assert(Algebra::size(tau) == mb.dof_actuated());
@@ -67,7 +68,8 @@ void forward_dynamics(MultiBody<Algebra> &mb,
         // TODO consider nonzero resting position of joint for stiffness?
         // TODO consider non-scalar joint damping and stiffness?
         VectorX quat = mb.get_q_for_link(q, i);
-        Vector3 Axes_angle = Algebra::quaternion_axis_angle(Quaternion(quat[0], quat[1], quat[2], quat[3]));
+        Quaternion qquat = Algebra::quat_from_xyzw(quat[0], quat[1], quat[2], quat[3]);
+        Vector3 Axes_angle = Algebra::quaternion_axis_angle(qquat);
         tau_temp -= link.stiffness * Axes_angle;
         tau_temp -= link.damping * mb.get_qd_for_link(qd, i);
 
@@ -223,11 +225,20 @@ void forward_dynamics(MultiBody<Algebra> &mb,
     //       NEURAL_ASSIGN(base_bias_force[5], "base_bias_force_5");
     // #endif
 
-     mb.base_acceleration() = -mb.base_abi().inv_mul(mb.base_bias_force());
+     if (rbdl_convention) {
+       Matrix6 inv_abi = Algebra::inverse(mb.base_abi().matrix());
+       mb.base_acceleration() = -MotionVector( inv_abi * mb.base_bias_force());
+     } else {
+       mb.base_acceleration() = -mb.base_abi().inv_mul(mb.base_bias_force());
+     }
     //mb.base_acceleration() = -MotionVector(
     //    Algebra::inverse(mb.base_abi().matrix()) * mb.base_bias_force());
 
   } else {
+    if (rbdl_convention) {
+      // convert gravity to base frame for fixed-base systems
+      spatial_gravity = mb.base_X_world().apply(spatial_gravity);
+    }
     mb.base_acceleration() = -spatial_gravity;
   }
 
@@ -245,13 +256,15 @@ void forward_dynamics(MultiBody<Algebra> &mb,
       Algebra::print("a_parent", a_parent);
     }
 #endif
+    MotionVector x_a = X_parent.apply(a_parent);
+    link.a = x_a + link.c;
 
     // model.a[i] = X_parent.apply(model.a[parent]) + model.c[i];
     // LOG << "a'[" << i << "] = " << model.a[i].transpose() << std::endl;
 
     if (link.qd_index >= 0) {
-      MotionVector x_a = X_parent.apply(a_parent);
-      link.a = x_a + link.c;
+      
+      
 #if DEBUG
       Algebra::print("x_a", x_a);
       Algebra::print("a'", link.a);
@@ -288,9 +301,24 @@ void forward_dynamics(MultiBody<Algebra> &mb,
 #endif
   }
   if (mb.is_floating()) {
-    mb.base_acceleration() += spatial_gravity;
-    for (int i = 0; i < 6; i++) {
-      qdd[i] = mb.base_acceleration()[i];
+    if (rbdl_convention) {
+      MotionVector xa  = mb.base_acceleration();
+      xa.bottom += Algebra::cross(mb.base_velocity().top, mb.base_velocity().bottom);
+#ifdef TDS_USE_LEFT_ASSOCIATIVE_TRANSFORMS
+      xa.bottom = Algebra::transpose(mb.base_X_world().rotation) *  xa.bottom;
+#else
+      xa.bottom = mb.base_X_world().rotation *  xa.bottom;
+#endif
+      xa += spatial_gravity;
+      for (int i = 0; i < 6; i++) {
+      qdd[i] = xa[i];
+      }
+    }
+    else {
+      mb.base_acceleration() += spatial_gravity;
+      for (int i = 0; i < 6; i++) {
+        qdd[i] = mb.base_acceleration()[i];
+      }
     }
   } else {
     mb.base_acceleration().set_zero();
@@ -299,7 +327,8 @@ void forward_dynamics(MultiBody<Algebra> &mb,
 
 template <typename Algebra>
 void forward_dynamics(MultiBody<Algebra> &mb,
-                      const typename Algebra::Vector3 &gravity) {
-  forward_dynamics(mb, mb.q(), mb.qd(), mb.tau(), gravity, mb.qdd());
+                      const typename Algebra::Vector3 &gravity,
+                      bool rbdl_convention = false) {
+  forward_dynamics(mb, mb.q(), mb.qd(), mb.tau(), gravity, mb.qdd(), rbdl_convention);
 }
 }  // namespace tds

@@ -1,4 +1,4 @@
-#
+1#
 # Copyright 2020 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -86,6 +86,9 @@ print(platform)
 
 CXX_FLAGS = ''
 CXX_FLAGS += '-fpermissive '
+CXX_FLAGS += '-D_USE_MATH_DEFINES '
+CXX_FLAGS += '-DUSE_EIGEN '
+
 
 
 # libraries += [current_python]
@@ -94,7 +97,7 @@ libraries = []
 include_dirs = ['src', '.','python', 'third_party/eigen3', 'third_party/tinyxml2/include', 'third_party/pybind11/include']
 
 pytinyopengl3_libraries = []
-pytinyopengl3_include_dirs = ['src', 'third_party/tinyobjloader']
+pytinyopengl3_include_dirs = ['src', 'third_party/tinyobjloader', 'third_party/tinyxml2/include']
 
 try:
     import numpy
@@ -127,6 +130,7 @@ pytinyopengl3_sources = ["python/pytinyopengl3.cc",\
 "third_party/glad/gl.c",\
 "third_party/stb_image/stb_image.cpp",\
 "third_party/tinyobjloader/tiny_obj_loader.cc",\
+"third_party/tinyxml2/tinyxml2.cpp",\
 ]
 
 
@@ -211,11 +215,14 @@ print("-----")
 
 extensions = []
 
+CXX_FLAGS_TDS = CXX_FLAGS + '-DENABLE_TEST_ENVS ' + '-DNOMINMAX '
+
 pytinydiffsim_ext = Extension(
     "pytinydiffsim",
     sources=sources+["python/pytinydiffsim.cc"],
     libraries=libraries,
-    extra_compile_args=CXX_FLAGS.split(),
+    
+    extra_compile_args=CXX_FLAGS_TDS.split(),
     include_dirs=include_dirs + ["."])
 
 extensions.append(pytinydiffsim_ext)
@@ -228,6 +235,27 @@ pytinydiffsim_dual_ext = Extension(
     include_dirs=include_dirs + ["."])
 
 extensions.append(pytinydiffsim_dual_ext)
+
+if os.path.exists("third_party/CppAD/include"):
+    platform_include_dirs = []
+    if _platform == "win32":
+      platform_include_dirs=["third_party/patches/CppADCodeGenWindows/include"]
+    if _platform == "linux" or _platform == "linux2":
+      platform_include_dirs=["third_party/patches/CppADCodeGenLinux/include"]
+    if _platform == "darwin":
+      platform_include_dirs=["third_party/patches/CppADCodeGenOSXIntel/include"]
+    pytinydiffsim_ad_ext = Extension(
+        "pytinydiffsim_ad",
+        sources=sources+["python/pytinydiffsim_ad.cc"],
+        libraries=libraries,
+        extra_compile_args=CXX_FLAGS.split(),
+        include_dirs=include_dirs + platform_include_dirs + [".",
+                  "third_party/CppADCodeGen/include",
+                  "third_party/CppAD/include" ])
+      
+    extensions.append(pytinydiffsim_ad_ext)
+else:
+    print("Skipping pytinydiffsim_ad extension since CppAD is missing.")
 
 pytinyopengl3_ext = Extension(
     "pytinyopengl3",
@@ -245,7 +273,7 @@ extensions.append(pytinyopengl3_ext)
 
 setup(
     name='pytinydiffsim',
-    version='0.0.4',
+    version='0.1.0',
     description=
     'Tiny Differentiable Physics Library for Robotics Simulation and Reinforcement Learning',
     long_description=

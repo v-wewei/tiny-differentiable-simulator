@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#define B3_NO_PROFILE 1
 #include "math/tiny/tiny_double_utils.h"
 
 
-typedef double TinyDualScalar;
+typedef double InnerScalar;
 typedef double MyScalar;
 typedef ::TINY::DoubleUtils MyTinyConstants;
 

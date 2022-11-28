@@ -26,7 +26,7 @@
 #include "meshcat_cube_data.h"
 #include "meshcat_zmq.h"
 #include "multi_body.hpp"
-#include "urdf/urdf_structures.hpp"
+#include "urdf_structures.hpp"
 
 inline std::string correct_non_utf_8(const std::string &str) {
   int i, f_size = str.size();
@@ -115,11 +115,17 @@ struct MeshcatUrdfVisualizer {
   typedef ::tds::UrdfLink<Algebra> TinyUrdfLink;
   typedef ::tds::UrdfVisual<Algebra> UrdfVisual;
   
+  using Scalar = typename Algebra::Scalar;
   using Vector3 = typename Algebra::Vector3;
   using Quaternion = typename Algebra::Quaternion;
   using Matrix3x3 = typename Algebra::Matrix3;
   typedef tds::Transform<Algebra> Transform;
   typedef ::tds::MultiBody<Algebra> TinyMultiBody;
+
+  enum BASE_TRANSFORM_ORDER {
+      QUAT_XYZW_POSXYZ = 1,
+      POSXYZ_QUAT_XYZW,
+      };
 
   struct TinyVisualLinkInfo {
     std::string vis_name;
@@ -169,6 +175,16 @@ struct MeshcatUrdfVisualizer {
     }
   }
 
+  void create_sphere_instance(double radius, double world_pos[3], const std::string& meshcat_path, int color_rgb = 0xffffff )
+  {
+      if (meshcat_path.length())
+      {
+          nlohmann::json sphere_cmd =
+                      create_sphere_cmd(radius, world_pos, color_rgb, meshcat_path.c_str());
+          send_zmq(m_sock, sphere_cmd);
+      }
+  }
+
   void convert_link_visuals(TinyUrdfLink &link, int link_index,
                             bool useTextureUuid, std::vector<int>& visual_instance_uids) {
     for (int vis_index = 0; vis_index < (int)link.urdf_visual_shapes.size();
@@ -188,49 +204,85 @@ struct MeshcatUrdfVisualizer {
       b2v.inertia_rpy = link.urdf_inertial.origin_rpy;
       int color_rgb = 0xffffff;
       double world_pos[3] = {0, 0, 0};
-      if (v.geometry.geom_type == tds::TINY_MESH_TYPE) {
-        // printf("mesh filename=%s\n", v.geom_meshfilename.c_str());
-        std::string obj_data;
-
-        FILE *fp =
-            fopen((m_path_prefix + v.geometry.mesh.file_name).c_str(), "r");
-        if (fp) {
-          fseek(fp, 0, SEEK_END);
-          int datasize = (int)ftell(fp);
-          fseek(fp, 0, SEEK_SET);
-          char *data = static_cast<char *>(malloc(datasize + 1));
-          if (data) {
-            int bytesRead;
-            bytesRead = fread(data, 1, datasize, fp);
-            data[datasize] = 0;
-            obj_data = std::string(data);
+      const char* meshcat_path = vis_name.c_str();
+      switch (v.geometry.geom_type)
+      {
+          case tds::TINY_SPHERE_TYPE:
+          {
+              if (v.geometry.sphere.radius>0)
+              {
+                nlohmann::json sphere_cmd =
+                  create_sphere_cmd(v.geometry.sphere.radius, world_pos, color_rgb, meshcat_path);
+                send_zmq(m_sock, sphere_cmd);
+              }
+            break;
+         }
+         case tds::TINY_CAPSULE_TYPE: 
+         {
+            nlohmann::json box_cmd = create_box_cmd(v.geometry.capsule.radius, 
+                v.geometry.capsule.radius, v.geometry.capsule.length, world_pos, color_rgb, meshcat_path);
+            send_zmq(m_sock, box_cmd);
+            break;
+         }
+         case tds::TINY_BOX_TYPE: 
+         {
+           
+            nlohmann::json box_cmd = create_box_cmd(v.geometry.box.extents[0], 
+                v.geometry.box.extents[1], v.geometry.box.extents[2], world_pos, color_rgb, meshcat_path);
+            send_zmq(m_sock, box_cmd);
+            break;
           }
-          free(data);
-          fclose(fp);
-        }
-        int str_len = obj_data.length();
 
-        if (str_len) {
-          std::string obj_data_utf8 = correct_non_utf_8(obj_data);
-          if (useTextureUuid) {
-            nlohmann::json cmd = create_textured_mesh_cmd2(
-                obj_data_utf8.c_str(), m_texture_uuid, world_pos, color_rgb,
-                vis_name.c_str());
-            send_zmq(m_sock, cmd);
-          } else {
-            nlohmann::json cmd = create_textured_mesh_cmd(
-                obj_data_utf8.c_str(), m_texture_data.c_str(), world_pos,
-                color_rgb, vis_name.c_str());
+        case tds::TINY_MESH_TYPE: 
+        {
+            // printf("mesh filename=%s\n", v.geom_meshfilename.c_str());
+            std::string obj_data;
 
-            nlohmann::json ob = cmd["object"];
-            nlohmann::json texs = ob["textures"];
-            nlohmann::json tex = texs[0];
-            nlohmann::json uuid = tex["uuid"];
-            m_texture_uuid = uuid;
-            send_zmq(m_sock, cmd);
+            FILE *fp =
+                fopen((m_path_prefix + v.geometry.mesh.file_name).c_str(), "r");
+            if (fp) {
+              fseek(fp, 0, SEEK_END);
+              int datasize = (int)ftell(fp);
+              fseek(fp, 0, SEEK_SET);
+              char *data = static_cast<char *>(malloc(datasize + 1));
+              if (data) {
+                int bytesRead;
+                bytesRead = fread(data, 1, datasize, fp);
+                data[datasize] = 0;
+                obj_data = std::string(data);
+              }
+              free(data);
+              fclose(fp);
+            }
+            int str_len = obj_data.length();
+
+            if (str_len) {
+              std::string obj_data_utf8 = correct_non_utf_8(obj_data);
+              if (useTextureUuid) {
+                nlohmann::json cmd = create_textured_mesh_cmd2(
+                    obj_data_utf8.c_str(), m_texture_uuid, world_pos, color_rgb,
+                    meshcat_path);
+                send_zmq(m_sock, cmd);
+              } else {
+                nlohmann::json cmd = create_textured_mesh_cmd(
+                    obj_data_utf8.c_str(), m_texture_data.c_str(), world_pos,
+                    color_rgb, meshcat_path);
+
+                nlohmann::json ob = cmd["object"];
+                nlohmann::json texs = ob["textures"];
+                nlohmann::json tex = texs[0];
+                nlohmann::json uuid = tex["uuid"];
+                m_texture_uuid = uuid;
+                send_zmq(m_sock, cmd);
+              }
+            }
+            break;
           }
-        }
-      }
+          default:
+          {
+              printf("Unknown geometry type: %d\n", v.geometry.geom_type);
+          }
+      };
 
       visual_instance_uids.push_back(m_uid);
       m_b2vis[m_uid++] = b2v;
@@ -311,6 +363,87 @@ struct MeshcatUrdfVisualizer {
         }
       }
     }
+  }
+
+    void sync_visual_transforms2(const TinyMultiBody* body, const std::vector<Scalar>& params, int link_visual_transforms_start_index, BASE_TRANSFORM_ORDER base_xform_layout = QUAT_XYZW_POSXYZ) {
+    // sync base transform
+    int index = link_visual_transforms_start_index;
+    for (int v = 0; v < body->visual_instance_uids().size(); v++) {
+      int visual_id = body->visual_instance_uids()[v];
+      if (m_b2vis.find(visual_id) != m_b2vis.end()) {
+        Vector3 pos(0,0,0);
+        Quaternion rot(0,0,0,1);
+        switch (base_xform_layout) { 
+            case POSXYZ_QUAT_XYZW:
+                pos = Vector3(params[0],params[1],params[2]);
+                rot = Quaternion (params[3],params[4],params[5],params[6]);
+                break;
+            case QUAT_XYZW_POSXYZ:
+                pos = Vector3(params[4],params[5],params[6]);
+                rot = Quaternion (params[0],params[1],params[2],params[3]);
+                break;
+            default: {
+                }
+         }
+        Transform base_world;
+        base_world.translation = pos;
+        base_world.rotation = Algebra::quat_to_matrix(rot);
+
+        Transform geom_X_world =
+            base_world * body->X_visuals()[v];
+
+        const Matrix3x3 &m =
+            geom_X_world.rotation;
+
+        const TinyVisualLinkInfo &viz = m_b2vis.at(visual_id);
+        // printf("vis_name=%s\n", viz.vis_name.c_str());
+        double world_pos[3] = {geom_X_world.translation.getX(),
+                               geom_X_world.translation.getY(),
+                               geom_X_world.translation.getZ()};
+        double world_mat[9] = {m.getRow(0)[0], m.getRow(1)[0], m.getRow(2)[0],
+                               m.getRow(0)[1], m.getRow(1)[1], m.getRow(2)[1],
+                               m.getRow(0)[2], m.getRow(1)[2], m.getRow(2)[2]};
+        nlohmann::json tr_cmd =
+            create_transform_cmd(world_pos, world_mat, viz.vis_name.c_str());
+        send_zmq(m_sock, tr_cmd);
+      }
+    }
+
+    for (int l = 0; l < body->links().size(); l++) {
+      for (int v = 0; v < body->links()[l].visual_instance_uids.size(); v++) {
+        int visual_id = body->links()[l].visual_instance_uids[v];
+        if (m_b2vis.find(visual_id) != m_b2vis.end()) {
+          
+          Vector3 pos (params[index],params[index+1],params[index+2]);
+          Quaternion rot(params[index+3],params[index+4],params[index+5],params[index+6]);
+          index+=7;
+          //Transform geom_X_world2a =
+          //    body->links()[l].X_world * body->links()[l].X_visuals[v];
+          Transform geom_X_world;
+          geom_X_world.translation = pos;
+          geom_X_world.rotation = Algebra::quat_to_matrix(rot);
+          
+          const Matrix3x3 &m =
+              geom_X_world.rotation;
+          const TinyVisualLinkInfo &viz = m_b2vis.at(visual_id);
+          // printf("vis_name=%s\n", viz.vis_name.c_str());
+          double world_mat[9] = {
+              m.getRow(0)[0], m.getRow(1)[0], m.getRow(2)[0],
+              m.getRow(0)[1], m.getRow(1)[1], m.getRow(2)[1],
+              m.getRow(0)[2], m.getRow(1)[2], m.getRow(2)[2]};
+          double world_pos[3] = {geom_X_world.translation.getX(),
+                                 geom_X_world.translation.getY(),
+                                 geom_X_world.translation.getZ()};
+          nlohmann::json tr_cmd =
+              create_transform_cmd(world_pos, world_mat, viz.vis_name.c_str());
+          send_zmq(m_sock, tr_cmd);
+        }
+      }
+    }
+  }
+
+  //no-op to be compatible
+  void render() {
   }
 };
 

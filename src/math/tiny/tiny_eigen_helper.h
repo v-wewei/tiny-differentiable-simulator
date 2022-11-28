@@ -61,10 +61,10 @@ static TinyMatrixXxX<TinyScalar, TinyConstants> from_eigen(
   return result;
 }
 
-template <typename TinyScalar, typename TinyConstants, int Cols>
-static TinyVectorX<TinyScalar, TinyConstants> from_eigen_v(
-    const Eigen::Matrix<TinyScalar, Eigen::Dynamic, Cols>& m) {
-  TinyVectorX<TinyScalar, TinyConstants> result(m.rows());
+template <typename Algebra, int Cols>
+static typename Algebra::VectorX  from_eigen_v(
+    const Eigen::Matrix<typename Algebra::Scalar, Eigen::Dynamic, Cols>& m) {
+  typename Algebra::VectorX result(m.rows());
   for (int i = 0; i < m.rows(); ++i) {
     result[i] = m(i, 0);
   }
@@ -98,6 +98,23 @@ static TinyMatrixXxX<TinyScalar, TinyConstants> pseudo_inverse(
       cod.pseudoInverse();
   return from_eigen<TinyScalar, TinyConstants>(im);
 }
+
+
+template <typename Scalar>
+static Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic> pseudo_inverse(
+    const Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>& m) {
+
+    Eigen::CompleteOrthogonalDecomposition<
+    Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>>
+    cod(m);
+    Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic> J_pinv =
+    cod.pseudoInverse();
+    return J_pinv;
+}
+
+
+
+
 
 /**
  * Solves V2 = L^-1 * V for input vector V,

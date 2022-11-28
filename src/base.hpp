@@ -4,6 +4,7 @@
 
 #include <cstdio>
 #include <string>
+#include <cassert>
 
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES 1
@@ -35,4 +36,4 @@ TINY_INLINE void activate_nan_trap() {
 }
 }  // namespace tds
 
-typedef void (*SubmitProfileTiming)(const std::string& profileName);
+typedef void (*SubmitProfileTiming)(const char* profileName);

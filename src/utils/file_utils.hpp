@@ -6,6 +6,7 @@
 #include <mach-o/dyld.h> /* _NSGetExecutablePath */
 #else
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
 // not Mac, not Windows, let's cross the fingers it is Linux :-)
@@ -18,7 +19,7 @@
 #include <stddef.h>  //ptrdiff_h
 #include <stdio.h>
 #include <string.h>
-
+#include <assert.h>
 #include <cassert>
 
 #ifndef TDS_HOME
@@ -153,7 +154,7 @@ struct FileUtils {
     if (numBytes > 0) {
       path[numBytes] = 0;
     } else {
-      assert("Cannot find executable path\n");
+      assert(0);//"Cannot find executable path\n");
     }
 #endif  //_WIN32
 #endif  //__APPLE__

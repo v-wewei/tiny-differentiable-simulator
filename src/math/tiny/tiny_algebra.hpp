@@ -11,6 +11,7 @@
 #include "tiny_vector3.h"
 #include "tiny_vector_x.h"
 #include "../transform.hpp"
+#include "math/conditionals.hpp"
 #undef min
 #undef max
 
@@ -144,6 +145,25 @@ struct TinyAlgebra {
     return res;
   }
 
+  TINY_INLINE static MatrixX mult(const MatrixX &a,
+                                  const MatrixX &b) {
+    return a * b;
+  }
+
+  TINY_INLINE static VectorX mult(const MatrixX &a,
+                                  const VectorX &b) {
+    return a * b;
+  }
+  TINY_INLINE static Vector3 mult(const MatrixX &a,
+                                  const Vector3 &b) {
+    VectorX vx = VectorX(3);
+    vx[0] = b.getX();
+    vx[1] = b.getY();
+    vx[2] = b.getZ();
+    vx = mult(a, vx);
+    return Vector3(vx[0], vx[1], vx[2]);
+  }
+
   template <typename T1, typename T2>
   TINY_INLINE static auto dot(const T1 &vector_a, const T2 &vector_b) {
     return vector_a.dot(vector_b);
@@ -241,6 +261,16 @@ struct TinyAlgebra {
    * Returns a 3x3 identity matrix.
    */
   TINY_INLINE static Matrix3 eye3() { return diagonal3(TinyConstants::one()); }
+
+  TINY_INLINE static MatrixX eye(int n) {
+    MatrixX mat = create_matrix_x(n, n);
+    mat.set_zero();
+    for (int i = 0; i < n; i++) {
+      mat(i, i) = one();
+    }
+    return mat;
+  }
+
   TINY_INLINE static void set_identity(Quaternion &quat) {
     quat.set_identity();
   }
@@ -257,6 +287,8 @@ struct TinyAlgebra {
     return TinyConstants::fraction(a, b);
   }
   TINY_INLINE static Scalar pi() { return TinyConstants::pi(); }
+
+  TINY_INLINE static Scalar half_pi() { return TinyConstants::half_pi(); }
 
   TINY_INLINE static Scalar scalar_from_string(const std::string &s) {
     return TinyConstants::scalar_from_string(s);
@@ -470,17 +502,64 @@ struct TinyAlgebra {
     quat.setRotation(axis, angle);
     return quat;
   }
+
+  TINY_INLINE static Scalar epsilon() {
+      return std::numeric_limits<double>::epsilon();
+  }
   TINY_INLINE static Vector3 quaternion_axis_angle(const Quaternion quat) {
       Vector3 qv(quat.getX(), quat.getY(), quat.getZ());
       Scalar qv_norm = qv.length();
       Scalar theta = two() * TinyConstants::atan2(qv_norm, quat.getW());
 
+      /*
       if (qv_norm < pow(Scalar(std::numeric_limits<double>::epsilon()), fraction(1, 4))){
           return one()/(half() + theta*theta*fraction(1, 48)) * qv;
       }
 
       return (theta / qv_norm) * qv;
+      */
+      
+      Scalar scaling = tds::where_lt(qv_norm, 
+                                     pow(Scalar(std::numeric_limits<double>::epsilon()), fraction(1, 4)),
+                                     one()/(half() + theta*theta*fraction(1, 48)),
+                                     (theta / qv_norm));
+      return scaling * qv;
   }
+    
+  TINY_INLINE static const Quaternion quat_difference(const Quaternion &start, 
+                                                      const Quaternion &end) {
+    Quaternion q1 = normalize(start);
+    Quaternion q2 = normalize(end);
+    
+    /* Ported from PyBullet */
+    // The "nearest" operation from PyBullet
+    VectorX diff(4);
+    diff[0] = q1.getX() - q2.getX();
+    diff[1] = q1.getY() - q2.getY();
+    diff[2] = q1.getZ() - q2.getZ();
+    diff[3] = q1.getW() - q2.getW();
+
+    VectorX sum(4);
+    sum[0] = q1.getX() + q2.getX();
+    sum[1] = q1.getY() + q2.getY();
+    sum[2] = q1.getZ() + q2.getZ();
+    sum[3] = q1.getW() + q2.getW();
+    
+    Scalar dd = diff.dot(diff);
+    Scalar ss = sum.dot(sum);
+   
+    Quaternion closest_end = quat_from_xyzw(
+        tds::where_lt(dd, ss, q2.getX(), -q2.getX()),
+        tds::where_lt(dd, ss, q2.getY(), -q2.getY()),
+        tds::where_lt(dd, ss, q2.getZ(), -q2.getZ()),
+        tds::where_lt(dd, ss, q2.getW(), -q2.getW()));
+    closest_end.normalize();
+
+    Quaternion res = closest_end * inverse(q1);
+    res.normalize();
+    return res;
+  }
+  
   TINY_INLINE static Scalar quaternion_angle(const Quaternion quat) {
       Vector3 qv(quat.getX(), quat.getY(), quat.getZ());
       Scalar qv_norm = qv.length();
@@ -521,17 +600,51 @@ struct TinyAlgebra {
    * Computes the quaternion delta given current rotation q, angular velocity w,
    * time step dt.
    */
-  TINY_INLINE static Quaternion quat_velocity(const Quaternion &q,
+  
+	TINY_INLINE static Quaternion quat_velocity(const Quaternion &q,
                                               const Vector3 &w,
                                               const Scalar &dt) {
-    return w * q * (dt * half());
-    // Quaternion delta(q[3] * w[0] + q[1] * w[2] - q[2] * w[1],
-    //                  q[3] * w[1] + q[2] * w[0] - q[0] * w[2],
-    //                  q[3] * w[2] + q[0] * w[1] - q[1] * w[0],
-    //                  -q[0] * w[0] - q[1] * w[1] - q[2] * w[2]);
-    // delta *= half() * dt;
-    // print("delta quat", delta);
-    // return delta;
+        auto ww = (-q.x()*w[0] - q.y()*w[1] - q.z()*w[2]  ) * (half() * dt);
+        auto xx = ( q.w()*w[0] + q.z()*w[1] - q.y()*w[2]) * (half() * dt);
+        auto yy = ( q.w()*w[1] + q.x()*w[2] - q.z()*w[0]) * (half() * dt);
+        auto zz = ( q.w()*w[2] + q.y()*w[0] - q.x()*w[1]) * (half() * dt);
+
+        Quaternion delta = quat_from_xyzw_unsafe(xx,yy,zz, ww);
+        return delta;
+    }
+
+    TINY_INLINE static Quaternion quat_velocity_spherical(const Quaternion &q,
+                                              const Vector3 &vel,
+                                              const Scalar &dt) {
+        //return w * q * (dt * half());
+        auto w = (-q.x() * vel[0] - q.y() * vel[1] - q.z() * vel[2]) * (half() * dt);
+        auto x = (q.w() * vel[0] + q.y() * vel[2] - q.z() * vel[1]) * (half() * dt);
+        auto y = (q.w() * vel[1] + q.z() * vel[0] - q.x() * vel[2]) * (half() * dt);
+        auto z = (q.w() * vel[2] + q.x() * vel[1] - q.y() * vel[0]) * (half() * dt);
+        //we may create a zero length quaternion, use the 'unsafe' version
+        Quaternion delta = quat_from_xyzw_unsafe(x,y,z,w);
+        return delta;
+    }
+
+ 
+  TINY_INLINE static Quaternion quat_integrate(const Quaternion &q,
+      const Vector3 &ang_vel,
+      const Scalar &dt){
+
+      auto angle = norm(ang_vel);
+      Vector3 axis;
+      if(angle < 0.001)
+      {
+          // use Taylor's expansions of sync function
+          axis = ang_vel * (0.5 * dt - (dt * dt * dt) * (0.020833333333) * angle * angle);
+      }
+      else
+      {
+          // sync(fAngle) = sin(c*fAngle)/t
+          axis = ang_vel * (sin(0.5 * angle * dt) / angle);
+      }
+      Quaternion quat = q * Quaternion(axis.x(),axis.y(),axis.z(),cos(angle * dt * 0.5));
+      return quat;
   }
 
   TINY_INLINE static void quat_increment(Quaternion &a, const Quaternion &b) {
@@ -548,6 +661,40 @@ struct TinyAlgebra {
                                                      const Scalar &z,
                                                      const Scalar &w) {
     return Quaternion(x, y, z, w);
+  }
+
+  //unsafe version allows zero-length quaternion x=y=z=w=0
+  TINY_INLINE static const Quaternion quat_from_xyzw_unsafe(const Scalar &x,
+                                                     const Scalar &y,
+                                                     const Scalar &z,
+                                                     const Scalar &w) {
+    Quaternion q;
+    q.setValue(x,y,z,w);
+    return q;
+  }
+  
+
+  
+  /**@brief Set the quaternion using euler angles, compatible with PyBullet/ROS/Gazebo
+   * @param yaw Angle around Z
+   * @param pitch Angle around Y
+   * @param roll Angle around X */
+  TINY_INLINE static const Quaternion quat_from_euler_rpy(const Vector3& rpy) {
+    Quaternion q;
+    set_euler_rpy(q, rpy);
+    return q;
+  }
+  
+  TINY_INLINE static const Vector3 get_euler_rpy(const Quaternion &q) {
+    return q.get_euler_rpy();
+  }
+  
+  TINY_INLINE static const Vector3 get_euler_rpy2(const Quaternion &q) {
+    return q.get_euler_rpy2();
+  }
+  
+  TINY_INLINE static void set_euler_rpy(Quaternion &q, const Vector3& rpy) {
+    q.set_euler_rpy(rpy);
   }
 
   TINY_INLINE static void set_zero(Matrix3 &m) { m.set_zero(); }
@@ -568,6 +715,8 @@ struct TinyAlgebra {
     v.top.set_zero();
     v.bottom.set_zero();
   }
+  
+  TINY_INLINE static const Vector3 get_row(const Matrix3 &m, const int i) { return m.getRow(i); }
 
   /**
    * Non-differentiable comparison operator.
@@ -635,8 +784,16 @@ struct TinyAlgebra {
     return TinyConstants::sin1(s);
   }
 
+  TINY_INLINE static Scalar asin(const Scalar& s) {
+    return TinyConstants::asin(s);
+  }
+
   TINY_INLINE static Scalar cos(const Scalar &s) {
     return TinyConstants::cos1(s);
+  }
+
+  TINY_INLINE static Scalar acos(const Scalar &s) {
+    return TinyConstants::acos(s);
   }
 
   TINY_INLINE static Scalar tan(const Scalar &s) {
@@ -671,12 +828,14 @@ struct TinyAlgebra {
     return TinyConstants::tanh(s);
   }
 
-  TINY_INLINE static Scalar min(const Scalar &a, const Scalar &b) {
-    return TinyConstants::min1(a, b);
+  template <typename T>
+  TINY_INLINE static auto max(const T &x, const T &y) {
+    return tds::where_gt(x, y, x, y);
   }
 
-  TINY_INLINE static Scalar max(const Scalar &a, const Scalar &b) {
-    return TinyConstants::max1(a, b);
+  template <typename T>
+  TINY_INLINE static auto min(const T &x, const T &y) {
+    return tds::where_lt(x, y, x, y);
   }
 
   TinyAlgebra() = delete;

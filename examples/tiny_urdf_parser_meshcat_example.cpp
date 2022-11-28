@@ -20,6 +20,7 @@
 #include <thread>
 
 #include "visualizer/meshcat/meshcat_urdf_visualizer.h"
+#include "visualizer/tinyrenderer/tinyrenderer_urdf_visualizer.h"
 #include "math/tiny/tiny_double_utils.h"
 #include "utils/file_utils.hpp"
 #include "urdf/urdf_parser.hpp"
@@ -51,8 +52,14 @@ int main(int argc, char* argv[]) {
   UrdfParser<MyAlgebra> parser;
 
   // create graphics
-  MeshcatUrdfVisualizer<MyAlgebra> meshcat_viz;
+  //MeshcatUrdfVisualizer<MyAlgebra> meshcat_viz;
+  TinyRendererUrdfVisualizer<MyAlgebra> meshcat_viz;
+
   meshcat_viz.delete_all();
+
+  //double pos[3]={0.,0.,1.};
+  //meshcat_viz.create_sphere_instance(0.01,pos ,"test", 0xff0000);
+
 
   std::string plane_file_name;
   FileUtils::find_file("plane_implicit.urdf", plane_file_name);
@@ -68,7 +75,7 @@ int main(int argc, char* argv[]) {
         plane_urdf_structures, world, plane_mb,0);
     std::string texture_path = "checker_purple.png";
     meshcat_viz.m_path_prefix = plane_search_path;
-    meshcat_viz.convert_visuals(plane_urdf_structures, texture_path, 0);
+    meshcat_viz.convert_visuals(plane_urdf_structures, texture_path,&plane_mb);
   }
 
   char search_path[TINY_MAX_EXE_PATH_LEN];
@@ -98,9 +105,9 @@ int main(int argc, char* argv[]) {
   MultiBody<MyAlgebra>& mb = *world.create_multi_body();
   mb.set_floating_base(true);
   UrdfToMultiBody<MyAlgebra>::convert_to_multi_body(
-      urdf_structures, world, mb, 0);
+      urdf_structures, world, mb,0);
   mb.initialize();
-  meshcat_viz.convert_visuals(urdf_structures, texture_path, &mb);
+  meshcat_viz.convert_visuals(urdf_structures, texture_path,&mb);
   int start_index = 0;
   if (floating_base) {
     start_index = 7;
@@ -132,7 +139,7 @@ int main(int argc, char* argv[]) {
   int sync_counter = 0;
 
   while (1) {
-    std::this_thread::sleep_for(std::chrono::duration<double>(dt));
+    //std::this_thread::sleep_for(std::chrono::duration<double>(dt));
 
     forward_kinematics(mb);
 
@@ -177,9 +184,12 @@ int main(int argc, char* argv[]) {
     }
 
     forward_dynamics(mb, grav);
+    
+    mb.clear_forces();
 
     integrate_euler_qdd(mb, dt);
-    
+
+
     world.step(dt);
 
     integrate_euler(mb, dt);

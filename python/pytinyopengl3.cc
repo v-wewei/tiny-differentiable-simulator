@@ -1,3 +1,5 @@
+//runner.py --play --file rl_games\configs\tds\ppo_tds_ant.yaml --checkpoint runs/Ant_tds/nn/Ant_tds.pth
+// 
 // Copyright 2020 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,24 +14,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <string>
+#include <stdio.h>
+
 #include <pybind11/operators.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
-#include <stdio.h>
+
 
 #include "math/tiny/tiny_float_utils.h"
 #include "math/tiny/tiny_vector3.h"
 #include "math/tiny/tiny_pose.h"
 #include "visualizer/opengl/tiny_opengl3_app.h"
 #include "visualizer/opengl/tiny_camera.h"
-#include <string>
-
+#include "examples/opengl_urdf_visualizer.h"
+#include "urdf/urdf_parser.hpp"
 #include "tiny_obj_loader.h"
 #include "utils/file_utils.hpp"
 #include "visualizer/opengl/utils/tiny_mesh_utils.h"
+#include "math/tiny/tiny_algebra.hpp"
 #include "stb_image/stb_image.h"
 
 using namespace TINY;
+typedef ::TINY::FloatUtils MyTinyConstants;
+typedef TinyAlgebra<float, MyTinyConstants> MyAlgebra;
 
 std::string file_open_dialog(TinyWindowInterface* window)
 {
@@ -43,6 +51,13 @@ std::string file_open_dialog(TinyWindowInterface* window)
       }
   }
   return file_name;
+}
+
+std::string my_extract_path(const std::string& file_name) {
+  char full_path[TINY_MAX_EXE_PATH_LEN];
+  tds::FileUtils::extract_path(file_name.c_str(), full_path,
+                               TINY_MAX_EXE_PATH_LEN);
+  return full_path;
 }
 
 
@@ -100,6 +115,7 @@ std::vector<int> my_load_obj_shapes(TinyOpenGL3App& opengl_app, const std::strin
 }
 
 
+
 namespace py = pybind11;
 
 PYBIND11_MODULE(pytinyopengl3, m) {
@@ -136,6 +152,7 @@ PYBIND11_MODULE(pytinyopengl3, m) {
       .def("swap_buffer", &TinyOpenGL3App::swap_buffer)
       .def("register_cube_shape", &TinyOpenGL3App::register_cube_shape)
       .def("register_graphics_unit_sphere_shape", &TinyOpenGL3App::register_graphics_unit_sphere_shape)
+      .def("register_graphics_capsule_shape", &TinyOpenGL3App::register_graphics_capsule_shape)
       .def("draw_grid", (void (TinyOpenGL3App::*)())&TinyOpenGL3App::draw_grid)
       .def("draw_grid", (void (TinyOpenGL3App::*)(DrawGridData)) & TinyOpenGL3App::draw_grid)
       .def("draw_text_3d", (void (TinyOpenGL3App::*)(const char*, float [3], float[4], float[4], float, int)) &TinyOpenGL3App::draw_text_3d)
@@ -198,7 +215,43 @@ PYBIND11_MODULE(pytinyopengl3, m) {
   m.def("file_open_dialog", &file_open_dialog);
 
   m.def("load_obj_shapes", &my_load_obj_shapes);
+  m.def("extract_path", &my_extract_path);
+  
+
+  py::class_<::tds::UrdfParser<MyAlgebra>>(m, "UrdfParser")
+          .def(py::init<>())
+      .def("load_urdf", &::tds::UrdfParser<MyAlgebra>::load_urdf)
+      .def("load_urdf_from_string", &::tds::UrdfParser<MyAlgebra>::load_urdf_from_string)
+      ;
+  
+
+  
+
+  py::class_<UrdfInstancePair>(m, "UrdfInstancePair")
+          .def(py::init<>())
+          .def_readwrite("link_index",
+                     &UrdfInstancePair::m_link_index)
+           .def_readwrite("visual_instance", &UrdfInstancePair::m_visual_instance);
+  
+  py::class_<::tds::UrdfStructures<MyAlgebra>>(m,"OpenGLUrdfStructures")
+      .def(py::init<>())
+      .def_readwrite("robot_name",
+                     &::tds::UrdfStructures<MyAlgebra>::robot_name);
+  
+
+  py::class_<OpenGLUrdfVisualizer<MyAlgebra>>(m, "OpenGLUrdfVisualizer")
+      .def(py::init<>())
+      .def("convert_visuals", &OpenGLUrdfVisualizer<MyAlgebra>::convert_visuals2)
+      .def("render", &OpenGLUrdfVisualizer<MyAlgebra>::render)
+      .def("create_instances",   &OpenGLUrdfVisualizer<MyAlgebra>::create_instances)
+      .def("sync_visual_transforms",
+           &OpenGLUrdfVisualizer<MyAlgebra>::sync_visual_transforms2)
+
+      .def_readwrite("opengl_app", &OpenGLUrdfVisualizer<MyAlgebra>::m_opengl_app)
       
+      .def_readwrite("path_prefix", &OpenGLUrdfVisualizer<MyAlgebra>::m_path_prefix)
+      ;
+
   
   py::class_<TinyPose<float, FloatUtils>>(m, "TinyPosef")
       .def(py::init<>())

@@ -15,31 +15,6 @@
  */
 
 
-// this work contains parts derived from 
-// https://github.com/dtecta/motion-toolkit
-// MIT license
-
-// Copyright(c) 2006 Gino van den Bergen, DTECTA
-
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this softwareand associated documentation files(the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and /or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions :
-// 
-// The above copyright noticeand this permission notice shall be included in
-// all copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
-
 #ifndef _TINY_DUAL_DOUBLE_UTILS_H
 #define _TINY_DUAL_DOUBLE_UTILS_H
 
@@ -161,8 +136,13 @@ struct TinyDualDoubleUtils {
      return TinyDualDouble(::asin(z.real()), z.dual() / ::sqrt(double(1) - z.real() * z.real()));
  }
 
-  static TinyDualDouble atan2(const TinyDualDouble& y, const TinyDualDouble& x)
-  {
+ static TinyDualDouble acos(const TinyDualDouble& z)
+ {
+     return TinyDualDouble(::acos(z.real()), -z.dual() / ::sqrt(double(1) - z.real() * z.real()));
+ }
+
+ static TinyDualDouble atan2(const TinyDualDouble& y, const TinyDualDouble& x)
+ {
       TinyDualDouble z = y / x;
       bool neg_x = x.real() < 0;
       bool neg_y = y.real() < 0;
@@ -170,7 +150,6 @@ struct TinyDualDoubleUtils {
       double quadrant = neg_x ? (neg_y ? -M_PI : M_PI) : 0;
       return TinyDualDouble(atan(z.real()) + quadrant, z.dual() / (double(1) + (z.real()*z.real())));
   }
-
 
   static double getDouble(TinyDualDouble v) { return (double)v.real(); }
 
